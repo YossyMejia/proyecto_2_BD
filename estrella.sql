@@ -61,8 +61,24 @@ select * from INBIO.SPECIMEN_FACT
 GO
 
 
+-- 1  Para un mes dado, sin importar el año, dar para cada orden (nivel de la jerarquía taxonómica) el número de especímenes que pertenecen a este.
+CREATE OR ALTER PROCEDURE especimenesXorden (@mes int)
+AS
+BEGIN
+	SELECT t.order_name, count(*) specimen_count 
+	FROM INBIO.SPECIMEN_FACT sf
+	INNER JOIN INBIO.TAXON t ON sf.taxon_id = t.taxon_id
+	INNER JOIN INBIO.GATHERING g ON sf.gathering_id = g.gathering_id
+	WHERE MONTH(g.gathering_date) = @mes
+	GROUP BY t.order_name
+	ORDER BY specimen_count DESC;	
+END
+GO
 
---1 FUNCION QUE SUMA LOS COSTOS DE RECOLECCION DE UN STRING DE ESPECÍMENES
+EXEC especimenesXorden 11;
+GO
+
+--1.1 Una función que calcule el costo total de recolección de un conjunto de especímenes. 
 CREATE OR ALTER FUNCTION INBIO.costo_recoleccion
 (@lista_especimenes VARCHAR(250))
 RETURNS FLOAT
@@ -73,26 +89,84 @@ DECLARE @costo_especimen_actual FLOAT
 DECLARE @specimen_id VARCHAR(250)
 DECLARE specimen_cursor CURSOR FOR (SELECT value FROM STRING_SPLIT(@lista_especimenes, ','))
 
-    SET @total_recoleccion = 0
+	SET @total_recoleccion = 0
 
-    OPEN specimen_cursor
-    FETCH NEXT FROM specimen_cursor INTO @specimen_id
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-            SET @costo_especimen_actual = (SELECT CAST(specimen_cost AS FLOAT) FROM INBIO.SPECIMEN where specimen_id = CAST(@specimen_id AS BIGINT))
-            IF @costo_especimen_actual IS NOT NULL
-                SET @total_recoleccion = @total_recoleccion + @costo_especimen_actual
-        FETCH NEXT FROM specimen_cursor INTO @specimen_id
-    END
-    CLOSE specimen_cursor
-    DEALLOCATE specimen_cursor
+	OPEN specimen_cursor
+	FETCH NEXT FROM specimen_cursor INTO @specimen_id
+	WHILE @@FETCH_STATUS = 0
+	BEGIN
+			SET @costo_especimen_actual = (SELECT CAST(specimen_cost AS FLOAT) FROM INBIO.SPECIMEN where specimen_id = CAST(@specimen_id AS BIGINT))
+			IF @costo_especimen_actual IS NOT NULL
+				SET @total_recoleccion = @total_recoleccion + @costo_especimen_actual
+		FETCH NEXT FROM specimen_cursor INTO @specimen_id
+	END
+	CLOSE specimen_cursor
+	DEALLOCATE specimen_cursor
 
 RETURN @total_recoleccion
 END
-GO 
+GO
 
 SELECT INBIO.costo_recoleccion('1537846,3945297');
+GO
 
+
+
+-- 1.2	Una función que calcule la cantidad de especímenes asociada a un taxón teniendo en cuenta todos sus hijos.
+CREATE OR ALTER FUNCTION INBIO.cantidad_especimenes
+(@categoria_taxon INT,
+ @nombre_taxon VARCHAR(250)
+)
+RETURNS INT
+AS
+BEGIN
+	
+	IF @categoria_taxon = 1
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id where t.kingdom_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 2
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.phylum_division_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 3
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.class_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 4
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.order_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 5
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.family_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 6
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.genus_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 7
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.species_name = @nombre_taxon)
+		END
+	ELSE IF @categoria_taxon = 8
+		BEGIN
+			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.scientific_name = @nombre_taxon)
+		END
+RETURN 0
+END
+GO
+
+select INBIO.cantidad_especimenes(3, 'Magnoliopsida');
+GO
 
 
 -- 3. SP para hacer un rollup por año y mes para la cantidad y el costo total de los especímenes. 
@@ -108,9 +182,8 @@ AS BEGIN
 END
 GO
 
-
 EXEC INBIO.ejercicio_rollup;
-
+GO
 
 -- 4. Hacer un cubo por año y reino para la cantidad y costo asociados a la recolección de especímenes. 
 CREATE OR ALTER PROCEDURE INBIO.ejercicio_cubo
@@ -127,4 +200,4 @@ END
 GO
 
 EXEC INBIO.ejercicio_cubo;
-                     
+GO
