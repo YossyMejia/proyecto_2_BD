@@ -62,6 +62,39 @@ GO
 
 
 
+--1 FUNCION QUE SUMA LOS COSTOS DE RECOLECCION DE UN STRING DE ESPECÍMENES
+CREATE OR ALTER FUNCTION INBIO.costo_recoleccion
+(@lista_especimenes VARCHAR(250))
+RETURNS FLOAT
+AS
+BEGIN
+DECLARE @total_recoleccion FLOAT
+DECLARE @costo_especimen_actual FLOAT
+DECLARE @specimen_id VARCHAR(250)
+DECLARE specimen_cursor CURSOR FOR (SELECT value FROM STRING_SPLIT(@lista_especimenes, ','))
+
+    SET @total_recoleccion = 0
+
+    OPEN specimen_cursor
+    FETCH NEXT FROM specimen_cursor INTO @specimen_id
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+            SET @costo_especimen_actual = (SELECT CAST(specimen_cost AS FLOAT) FROM INBIO.SPECIMEN where specimen_id = CAST(@specimen_id AS BIGINT))
+            IF @costo_especimen_actual IS NOT NULL
+                SET @total_recoleccion = @total_recoleccion + @costo_especimen_actual
+        FETCH NEXT FROM specimen_cursor INTO @specimen_id
+    END
+    CLOSE specimen_cursor
+    DEALLOCATE specimen_cursor
+
+RETURN @total_recoleccion
+END
+GO 
+
+SELECT INBIO.costo_recoleccion('1537846,3945297');
+
+
+
 -- 3. SP para hacer un rollup por año y mes para la cantidad y el costo total de los especímenes. 
 CREATE OR ALTER PROCEDURE INBIO.ejercicio_rollup
 AS BEGIN
@@ -74,6 +107,7 @@ AS BEGIN
 
 END
 GO
+
 
 EXEC INBIO.ejercicio_rollup;
 
@@ -93,3 +127,4 @@ END
 GO
 
 EXEC INBIO.ejercicio_cubo;
+                     
