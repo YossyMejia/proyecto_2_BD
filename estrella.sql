@@ -1,8 +1,77 @@
 use PROYECTO2BD2
-go
+GO
 
 
 --Modelo estrella
+
+--Tabla dimension de taxon
+DROP TABLE  INBIO.DIM_TAXON
+
+CREATE TABLE INBIO.DIM_TAXON
+(
+	taxon_id  bigint not null,
+	kingdom_name varchar(50),
+	phylum_division_name varchar(50),
+	class_name varchar(50),
+	order_name varchar(50),
+	family_name varchar(50),
+	genus_name varchar(50),
+	species_name varchar(50),
+	scientific_name varchar(250)
+)
+
+
+ALTER TABLE INBIO.DIM_TAXON ADD PRIMARY KEY (taxon_id);
+
+GO
+
+
+--Tabla dimension sitio
+DROP TABLE INBIO.DIM_SITE
+
+CREATE TABLE INBIO.DIM_SITE
+(
+site_id bigint not null,
+latitude  varchar(250) not null,
+longitude  varchar(250) not null,
+site_description varchar(max) not null
+)
+
+ALTER TABLE INBIO.DIM_SITE ADD PRIMARY KEY (site_id);
+
+GO
+
+
+--Tabla dimension gathering date 
+DROP TABLE INBIO.DIM_GATHERING
+
+CREATE TABLE INBIO.DIM_GATHERING
+(
+gathering_id int  not null,
+gathering_ano int not null,
+gathering_mes int not null,
+gathering_dia int not null
+)
+ 
+ALTER TABLE INBIO.DIM_GATHERING ADD PRIMARY KEY (gathering_id);
+
+GO
+
+
+--Tabla dimension gathering responsible
+DROP TABLE INBIO.DIM_GATHERING_RESPONSIBLE
+
+CREATE TABLE INBIO.DIM_GATHERING_RESPONSIBLE
+(
+gathering_responsible_id int  not null,
+name  varchar(250) not null --GATHERING RESPONSIBLE 
+)
+
+ALTER TABLE INBIO.DIM_GATHERING_RESPONSIBLE ADD PRIMARY KEY (gathering_responsible_id);
+
+GO
+
+
 
 --Tabla specimen_fact
 DROP TABLE  INBIO.SPECIMEN_FACT
@@ -22,16 +91,16 @@ CREATE TABLE INBIO.SPECIMEN_FACT
 ALTER TABLE INBIO.SPECIMEN_FACT ADD PRIMARY KEY (dim_specimen_fact);
 
 ALTER TABLE INBIO.SPECIMEN_FACT
-ADD FOREIGN KEY (taxon_id) REFERENCES INBIO.TAXON(taxon_id);
+ADD FOREIGN KEY (taxon_id) REFERENCES INBIO.DIM_TAXON(taxon_id);
 
 ALTER TABLE INBIO.SPECIMEN_FACT
-ADD FOREIGN KEY (site_id) REFERENCES INBIO.SITE(site_id);
+ADD FOREIGN KEY (site_id) REFERENCES INBIO.DIM_SITE(site_id);
 
 ALTER TABLE INBIO.SPECIMEN_FACT
-ADD FOREIGN KEY (gathering_id) REFERENCES INBIO.GATHERING(gathering_id);
+ADD FOREIGN KEY (gathering_id) REFERENCES INBIO.DIM_GATHERING(gathering_id);
 
 ALTER TABLE INBIO.SPECIMEN_FACT
-ADD FOREIGN KEY (gathering_responsible_id) REFERENCES INBIO.GATHERING_RESPONSIBLE(gathering_responsible_id);
+ADD FOREIGN KEY (gathering_responsible_id) REFERENCES INBIO.DIM_GATHERING_RESPONSIBLE(gathering_responsible_id);
 GO
 
 
@@ -41,16 +110,46 @@ GO
 CREATE OR ALTER PROCEDURE INBIO.datos_estrella
 AS BEGIN
 
+	INSERT INTO INBIO.DIM_TAXON
+	SELECT DISTINCT 
+	taxon_id, kingdom_name, phylum_division_name, class_name, 
+	order_name, family_name, genus_name, species_name, scientific_name
+	FROM INBIO.TAXON
+	where NOT EXISTS (select t.taxon_id from INBIO.DIM_TAXON t where t.taxon_id = taxon_id)
+
+	INSERT INTO INBIO.DIM_GATHERING_RESPONSIBLE
+	SELECT DISTINCT
+		gathering_responsible_id, name
+	FROM INBIO.GATHERING_RESPONSIBLE
+	where NOT EXISTS (select gar.name from INBIO.DIM_GATHERING_RESPONSIBLE gar 
+	where gar.name = name and gar.gathering_responsible_id = gathering_responsible_id)
+
+	INSERT INTO INBIO.DIM_SITE 
+	SELECT DISTINCT
+		site_id, latitude, longitude, site_description
+	FROM INBIO.SITE
+	where NOT EXISTS (select s.site_id from INBIO.DIM_SITE s where s.site_id = site_id)
+
+	INSERT INTO INBIO.DIM_GATHERING	
+	SELECT DISTINCT
+		g.gathering_id, YEAR(g.gathering_date),  MONTH(g.gathering_date),  DAY(g.gathering_date)
+	FROM INBIO.GATHERING g
+	where NOT EXISTS (select * from INBIO.DIM_GATHERING ga where ga.gathering_ano = YEAR(g.gathering_date)
+	AND ga.gathering_mes = MONTH(g.gathering_date) AND ga.gathering_dia = DAY(g.gathering_date) AND ga.gathering_id = g.gathering_id)  
+
+
 	INSERT INTO INBIO.SPECIMEN_FACT
-	SELECT 
-	(SELECT COUNT(sc.specimen_id) from INBIO.SPECIMEN sc), (SELECT SUM(CAST(sc.specimen_cost AS FLOAT)) from INBIO.SPECIMEN sc) ,
-	t.taxon_id, si.site_id, g.gathering_id , gr.gathering_responsible_id
+	SELECT DISTINCT
+	COUNT(*), SUM(CAST(s.specimen_cost AS FLOAT)), t.taxon_id, si.site_id , g.gathering_id, gr.gathering_responsible_id
 	FROM  INBIO.TAXON t
 	inner join INBIO.SPECIMEN s on s.taxon_id = t.taxon_id
 	inner join INBIO.GATHERING g on s.gathering_id = g.gathering_id
 	inner join INBIO.SITE si on g.site_id = si.site_id
 	inner join INBIO.GATHERING_RESPONSIBLE gr on g.gathering_responsible_id = gr.gathering_responsible_id
-	GROUP BY t.taxon_id, s.specimen_id, g.gathering_id, gr.gathering_responsible_id, si.site_id
+	WHERE NOT EXISTS ( SELECT * FROM INBIO.SPECIMEN_FACT sf WHERE sf.taxon_id = t.taxon_id AND sf.site_id = si.site_id 
+	AND g.gathering_id = sf.gathering_id AND sf.gathering_responsible_id = gr.gathering_responsible_id) 
+	GROUP BY t.taxon_id, g.gathering_id, gr.gathering_responsible_id, si.site_id
+	
 
 END
 GO
