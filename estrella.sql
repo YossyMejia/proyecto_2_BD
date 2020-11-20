@@ -55,6 +55,8 @@ gathering_dia int not null
  
 ALTER TABLE INBIO.DIM_GATHERING ADD PRIMARY KEY (gathering_id);
 
+select * from INBIO.DIM_GATHERING;
+
 GO
 
 
@@ -74,7 +76,7 @@ GO
 
 
 --Tabla specimen_fact
-DROP TABLE  INBIO.SPECIMEN_FACT
+DROP TABLE INBIO.SPECIMEN_FACT
 
 CREATE TABLE INBIO.SPECIMEN_FACT
 (
@@ -161,21 +163,22 @@ GO
 
 
 -- 1  Para un mes dado, sin importar el año, dar para cada orden (nivel de la jerarquía taxonómica) el número de especímenes que pertenecen a este.
-CREATE OR ALTER PROCEDURE especimenesXorden (@mes int)
+CREATE OR ALTER PROCEDURE INBIO.especimenesXorden (@mes int)
 AS
 BEGIN
-	SELECT t.order_name, count(*) specimen_count 
+	SELECT t.order_name, sum(sf.specimen_count) specimen_count 
 	FROM INBIO.SPECIMEN_FACT sf
-	INNER JOIN INBIO.TAXON t ON sf.taxon_id = t.taxon_id
-	INNER JOIN INBIO.GATHERING g ON sf.gathering_id = g.gathering_id
-	WHERE MONTH(g.gathering_date) = @mes
+	INNER JOIN INBIO.DIM_TAXON t ON sf.taxon_id = t.taxon_id
+	INNER JOIN INBIO.DIM_GATHERING g ON sf.gathering_id = g.gathering_id
+	WHERE g.gathering_mes = @mes
 	GROUP BY t.order_name
-	ORDER BY specimen_count DESC;	
+	ORDER BY specimen_count DESC
 END
 GO
 
-EXEC especimenesXorden 11;
+EXEC INBIO.especimenesXorden 1;
 GO
+
 
 --1.1 Una función que calcule el costo total de recolección de un conjunto de especímenes. 
 CREATE OR ALTER FUNCTION INBIO.costo_recoleccion
@@ -222,43 +225,43 @@ BEGIN
 	
 	IF @categoria_taxon = 1
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id where t.kingdom_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id where t.kingdom_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 2
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.phylum_division_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.phylum_division_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 3
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.class_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.class_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 4
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.order_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.order_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 5
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.family_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.family_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 6
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.genus_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.genus_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 7
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.species_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.species_name = @nombre_taxon)
 		END
 	ELSE IF @categoria_taxon = 8
 		BEGIN
-			RETURN (SELECT count(*) from INBIO.SPECIMEN_FACT sf
-			INNER JOIN INBIO.TAXON t on sf.taxon_id = t.taxon_id WHERE t.scientific_name = @nombre_taxon)
+			RETURN (SELECT sum(sf.specimen_count) from INBIO.SPECIMEN_FACT sf
+			INNER JOIN INBIO.DIM_TAXON t on sf.taxon_id = t.taxon_id WHERE t.scientific_name = @nombre_taxon)
 		END
 RETURN 0
 END
@@ -272,10 +275,10 @@ GO
 CREATE OR ALTER PROCEDURE INBIO.ejercicio_rollup
 AS BEGIN
 
-	SELECT ISNULL(YEAR(g.gathering_date), 0) AS AÑO, ISNULL(MONTH(g.gathering_date), 0) AS MES, COUNT(*) AS CANTIDAD_ESPECIES, SUM(CAST(s.specimen_cost AS FLOAT)) AS COSTO_RECOLECCION
-	FROM INBIO.SPECIMEN s
-	INNER JOIN INBIO.GATHERING g ON s.gathering_id = g.gathering_id
-	GROUP BY ROLLUP (YEAR(g.gathering_date), MONTH(g.gathering_date))
+	SELECT ISNULL(g.gathering_ano, 0) AS AÑO, ISNULL(g.gathering_mes, 0) AS MES, SUM(s.specimen_count) AS CANTIDAD_ESPECIES, SUM(s.cost_sum) AS COSTO_RECOLECCION
+	FROM INBIO.SPECIMEN_FACT s
+	INNER JOIN INBIO.DIM_GATHERING g ON s.gathering_id = g.gathering_id
+	GROUP BY ROLLUP (g.gathering_ano, g.gathering_mes)
 	ORDER BY 1,2
 
 END
@@ -288,11 +291,11 @@ GO
 CREATE OR ALTER PROCEDURE INBIO.ejercicio_cubo
 AS BEGIN
 
-	SELECT ISNULL(YEAR(g.gathering_date), 0) AS AÑO, ISNULL(t.kingdom_name,0) AS REINO , COUNT(*) AS CANTIDAD_ESPECIES, SUM(CAST(s.specimen_cost AS FLOAT)) AS COSTO_RECOLECCION
-	FROM INBIO.SPECIMEN s
-	INNER JOIN INBIO.TAXON t ON t.taxon_id = s.taxon_id
-	INNER JOIN INBIO.GATHERING g ON s.gathering_id = g.gathering_id
-	GROUP BY CUBE (YEAR(g.gathering_date), t.kingdom_name)
+	SELECT ISNULL(g.gathering_ano, 0) AS AÑO, ISNULL(t.kingdom_name,0) AS REINO , SUM(s.specimen_count) AS CANTIDAD_ESPECIES, SUM(s.cost_sum) AS COSTO_RECOLECCION
+	FROM INBIO.SPECIMEN_FACT s
+	INNER JOIN INBIO.DIM_TAXON t ON t.taxon_id = s.taxon_id
+	INNER JOIN INBIO.DIM_GATHERING g ON s.gathering_id = g.gathering_id
+	GROUP BY CUBE (g.gathering_ano, t.kingdom_name)
 	ORDER BY 1,2
 
 END
